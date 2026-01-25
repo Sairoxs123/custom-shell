@@ -78,7 +78,7 @@ string *tokenize_input(const string input)
 {
     Tokenizer *t = init_tokenizer();
 
-    int in_quotes = false;
+    bool in_quotes = false;
 
     for (int i = 0; input[i] != '\0'; i++)
     {
