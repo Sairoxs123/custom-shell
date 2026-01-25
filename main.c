@@ -44,12 +44,30 @@ string *tokenizer(string line)
 
     string p = line;
     bool in_quotes = false;
+    char quote_style = NULL;
+    int index = 0;
+    string temp = NULL;
 
-    while (*p != "\0")
+    while (p[index] != '\0')
     {
-        while (*p == " " && in_quotes) p++;
+        if (p[index] == ' ' && !in_quotes)
+        {
+            index++;
+            continue;
+        }
+        else if (p[index] == '\'' || p[index] == '\"')
+        {
+            if (in_quotes && quote_style == p[index])
+            {
+                in_quotes = false;
+            }
+            else if (!in_quotes && quote_style == p[index])
+            {
+                in_quotes = true;
+            }
+        }
+        index++;
     }
-
 }
 
 int main(void)
@@ -62,7 +80,7 @@ int main(void)
         if (input == NULL)
             break;
 
-        printf("%s\n", input);
+        tokenizer(input);
         free(input);
     }
 }
