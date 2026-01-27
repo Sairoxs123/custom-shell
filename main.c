@@ -1,10 +1,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <unistd.h>
+#include <sys/wait.h>
 
 #define MAX_BUFFER 4096
 
 typedef char *string;
+
+string text_to_print = "myshell>";
+
+void change_dir(const string);
 
 typedef struct
 {
@@ -84,6 +90,13 @@ string *tokenize_input(const string input)
     {
         char c = input[i];
 
+        if (c == '\\')
+        {
+            append_char_to_buffer(t, input[i + 1]);
+            i++;
+            continue;
+        }
+
         if (c == '"' || c == '\'')
         {
             in_quotes = !in_quotes;
@@ -105,6 +118,38 @@ string *tokenize_input(const string input)
     string *results = t->tokens;
     free(t);
     return results;
+}
+
+bool string_compare(const char* string_1, const char* string_2)
+{
+    int i = 0;
+    while (string_1[i] != '\0')
+    {
+        if (string_1[i] != string_2[i])
+        {
+            return false;
+        }
+        i++;
+    }
+
+    return string_2[i] == '\0';
+}
+
+string string_concatenation(const string string_1, const string string_2)
+{
+    string concatenated_string = malloc(sizeof(char) * 100);
+    int index = 0;
+    for (int i = 0; string_1[i] != '\0'; i++)
+    {
+        concatenated_string[index++] = string_1[i];
+    }
+    concatenated_string[index++] = ' ';
+    for (int i = 0; string_2[i] != '\0'; i++)
+    {
+        concatenated_string[index++] = string_2[i];
+    }
+    concatenated_string[index] = '\0';
+    return concatenated_string;
 }
 
 string read_input()
@@ -139,22 +184,42 @@ string read_input()
     return final_buffer ? final_buffer : buffer;
 }
 
+void exec_commands(const string *tokens)
+{
+    if (string_compare(tokens[0], "cd"))
+    {
+        change_dir(tokens[1]);
+    }
+    else
+    {
+        execvp(tokens[0], tokens);
+    }
+}
+
+void change_dir(const string directory_path)
+{
+    chdir(directory_path);
+    text_to_print = string_concatenation(text_to_print, directory_path);
+    return;
+}
+
 int main(void)
 {
+    extern string text_to_print;
     while (1)
     {
-        printf("myshell> ");
+        printf("%s ", text_to_print);
         string input = read_input();
 
         if (input == NULL || *input == '\0')
             break;
 
         string *tokens = tokenize_input(input);
-        for (int i = 0; tokens[i] != NULL; i++)
-        {
-            printf("%s\n", tokens[i]);
-        }
-
+        //for (int i = 0; tokens[i] != NULL; i++)
+        //{
+        //    printf("%s\n", tokens[i]);
+        //}
+        exec_commands(tokens);
         free_tokens(tokens);
         free(input);
     }
