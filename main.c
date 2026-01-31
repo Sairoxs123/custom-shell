@@ -3,10 +3,15 @@
 #include <stdbool.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <history.h>
 
 #define MAX_BUFFER 4096
+#define UP_ARROW   72
+#define DOWN_ARROW 80
 
 typedef char *string;
+
+Node *current_node = NULL;
 
 string text_to_print = "myshell>";
 
@@ -165,6 +170,14 @@ string read_input()
 
     while ((ch = fgetc(stdin)) != '\n' && ch != EOF)
     {
+        if (ch == UP_ARROW)
+        {
+            string command = go_to_older_command();
+        }
+        if (ch == DOWN_ARROW)
+        {
+            string command = go_to_newer_command();
+        }
         if (length + 1 >= capacity)
         {
             capacity *= 2;
@@ -198,7 +211,7 @@ int exec_commands(const string *tokens)
     {
         printf("Error occurred while trying to create a child process\n");
         return 1;
-    } 
+    }
     else if (pid == 0)
     {
          // printf("the child's id process is %d\n", getpid());
@@ -223,6 +236,10 @@ void change_dir(const string directory_path)
 int main(void)
 {
     extern string text_to_print;
+
+    Node *head = NULL;
+    current_node = head;
+
     while (1)
     {
         printf("%s ", text_to_print);
@@ -231,6 +248,7 @@ int main(void)
         if (input == NULL || *input == '\0')
             break;
 
+        insert_element_at_head(&head, input);
         string *tokens = tokenize_input(input);
         //for (int i = 0; tokens[i] != NULL; i++)
         //{
@@ -239,5 +257,6 @@ int main(void)
         exec_commands(tokens);
         free_tokens(tokens);
         free(input);
+        free_linked_list(head);
     }
 }
