@@ -184,16 +184,33 @@ string read_input()
     return final_buffer ? final_buffer : buffer;
 }
 
-void exec_commands(const string *tokens)
+int exec_commands(const string *tokens)
 {
+
     if (string_compare(tokens[0], "cd"))
     {
         change_dir(tokens[1]);
     }
+
+    pid_t pid = fork();
+
+    if (pid < 0)
+    {
+        printf("Error occurred while trying to create a child process\n");
+        return 1;
+    } 
+    else if (pid == 0)
+    {
+         // printf("the child's id process is %d\n", getpid());
+         execvp(tokens[0], tokens);
+    }
     else
     {
-        execvp(tokens[0], tokens);
+         // printf("the parent's process id is %d\n", getpid());
+         wait(NULL);
+         // printf("the child died. parent moving on.\n");
     }
+    return 0;
 }
 
 void change_dir(const string directory_path)
