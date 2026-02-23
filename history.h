@@ -13,6 +13,7 @@ typedef struct Node
     struct Node *next;
 } Node;
 
+int string_length(const string str);
 void insert_element_at_head(Node **head, const string command);
 string go_to_older_command();
 string go_to_newer_command();

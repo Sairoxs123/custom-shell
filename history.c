@@ -1,9 +1,6 @@
-#include <stdio.h>
-#include <stdlib.h>
+#include <history.h>
 
-typedef char *string;
-
-int string_length(const char *str)
+int string_length(const string str)
 {
     int len = 0;
     while (str[len] != '\0')
@@ -24,14 +21,7 @@ void string_copy(char *dest, const char *src)
     dest[i] = '\0';
 }
 
-typedef struct Node
-{
-    string command;
-    struct Node *previous;
-    struct Node *next;
-} Node;
-
-Node *current_node = NULL;
+extern Node *current_node;
 
 void insert_element_at_head(Node **head, const string command)
 {
@@ -97,21 +87,4 @@ void free_linked_list(Node *head)
         free(temp->command);
         free(temp);
     }
-}
-
-int main()
-{
-    Node *head = NULL;
-    current_node = head;
-    insert_element_at_head(&head, "Hello world");
-    insert_element_at_head(&head, "UNGA BUNGA");
-    printf("%s\n", current_node->command);
-    go_to_older_command();
-    printf("%s\n", current_node->command);
-    go_to_older_command();
-    go_to_newer_command();
-    printf("%s\n", current_node->command);
-
-    free_linked_list(head);
-    return 0;
 }

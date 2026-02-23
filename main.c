@@ -1,31 +1,34 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <signal.h>
+#include <termios.h>
 #include <history.h>
+#include <limits.h>
 
 #define MAX_BUFFER 4096
-#define UP_ARROW   72
-#define DOWN_ARROW 80
 
 typedef char *string;
 
 Node *current_node = NULL;
-
-string text_to_print = "myshell>";
 
 void change_dir(const string);
 
 typedef struct
 {
     char buffer[MAX_BUFFER]; // temp storage for current word
-    int buffer_index; // index of last data in buffer
+    int buffer_index;        // index of last data in buffer
 
-    string *tokens; // array of tokenized commands
+    string *tokens;  // array of tokenized commands
     int token_count; // number of tokens
-    int token_cap; // max number of tokens allowed
+    int token_cap;   // max number of tokens allowed
 } Tokenizer;
+
+struct termios orig_termios;
+volatile sig_atomic_t inRawMode = 0;
 
 Tokenizer *init_tokenizer()
 {
@@ -36,6 +39,37 @@ Tokenizer *init_tokenizer()
     t->tokens = malloc(sizeof(string) * t->token_cap);
     t->buffer[0] = '\0';
     return t;
+}
+
+void disableRawMode()
+{
+    if (inRawMode)
+    {
+        tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
+        inRawMode = 0;
+    }
+}
+
+void handle_signal(int sig)
+{
+    disableRawMode();
+    printf("\n");
+    exit(0);
+}
+
+void enableRawMode()
+{
+    if (inRawMode) return;
+
+    tcgetattr(STDIN_FILENO, &orig_termios);
+    atexit(disableRawMode);
+
+    struct termios raw = orig_termios;
+
+    raw.c_lflag &= ~(ECHO | ICANON);
+
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+    inRawMode = 1;
 }
 
 void append_char_to_buffer(Tokenizer *t, char c)
@@ -52,7 +86,8 @@ void append_char_to_buffer(Tokenizer *t, char c)
 
 void save_token(Tokenizer *t)
 {
-    if (t->buffer_index == 0) return;
+    if (t->buffer_index == 0)
+        return;
 
     t->buffer[t->buffer_index] = '\0';
 
@@ -115,7 +150,6 @@ string *tokenize_input(const string input)
         }
 
         append_char_to_buffer(t, c);
-
     }
 
     save_token(t);
@@ -125,7 +159,7 @@ string *tokenize_input(const string input)
     return results;
 }
 
-bool string_compare(const char* string_1, const char* string_2)
+bool string_compare(const char *string_1, const char *string_2)
 {
     int i = 0;
     while (string_1[i] != '\0')
@@ -166,18 +200,96 @@ string read_input()
     if (buffer == NULL)
         return NULL;
 
-    int ch;
+    fflush(stdout);
+    enableRawMode();
 
-    while ((ch = fgetc(stdin)) != '\n' && ch != EOF)
+    char ch;
+
+    while (read(STDIN_FILENO, &ch, 1) == 1 && ch != '\n')
     {
-        if (ch == UP_ARROW)
+        if (ch == '\033')
         {
-            string command = go_to_older_command();
+            char seq[3];
+
+            if (read(STDIN_FILENO, &seq[0], 1) == 0)
+                continue;
+            if (read(STDIN_FILENO, &seq[1], 1) == 0)
+                continue;
+
+            if (seq[0] == '[')
+            {
+                switch (seq[1])
+                {
+                case 'A':
+                    if (current_node != NULL)
+                    {
+                        string cmd = current_node->command;
+                        int cmd_len = string_length(cmd);
+
+                        // Clear current buffer on screen
+                        for (int i = 0; i < length; i++)
+                        {
+                            write(STDOUT_FILENO, "\b \b", 3);
+                        }
+
+                        // Copy command to buffer and display
+                        length = 0;
+                        for (int i = 0; i < cmd_len; i++)
+                        {
+                            buffer[length++] = cmd[i];
+                            write(STDOUT_FILENO, &cmd[i], 1);
+                        }
+
+                        if (current_node->next != NULL)
+                        {
+                            current_node = current_node->next;
+                        }
+                        else
+                        {
+                            write(STDOUT_FILENO, "\a", 1);
+                        }
+                    }
+                    continue;
+                case 'B':
+                    //printf("Down Arrow Pressed\r\n");
+                    //printf("%i", current_node == NULL);
+                    // write(STDOUT_FILENO, (current_node == NULL) ? "T" : "F", 1);
+                    if (current_node != NULL && current_node->previous != NULL)
+                    {
+                        string current_cmd = current_node->command;
+                        current_node = current_node->previous;
+                        string cmd = current_node->command;
+                        int cmd_len = string_length(cmd);
+
+                        for (int i = 0; i <= string_length(current_cmd); i++)
+                        {
+                            write(STDOUT_FILENO, "\b \b", 3);
+                        }
+
+                        length = 0;
+                        for (int i = 0; i < cmd_len; i++)
+                        {
+                            buffer[length++] = cmd[i];
+                            write(STDOUT_FILENO, &cmd[i], 1);
+                        }
+                    }
+
+                    continue;
+                }
+            }
+            continue;
         }
-        if (ch == DOWN_ARROW)
+
+        if (ch == 127) // Handle Backspace
         {
-            string command = go_to_newer_command();
+            if (length > 0)
+            {
+                length--;
+                write(STDOUT_FILENO, "\b \b", 3);
+            }
+            continue;
         }
+
         if (length + 1 >= capacity)
         {
             capacity *= 2;
@@ -189,10 +301,12 @@ string read_input()
             }
             buffer = temp;
         }
-        buffer[length++] = (char)ch;
+        buffer[length++] = ch;
+        write(STDOUT_FILENO, &ch, 1);
     }
+    write(STDOUT_FILENO, "\n", 1);
     buffer[length] = '\0';
-
+    disableRawMode();
     string final_buffer = realloc(buffer, (length + 1) * sizeof(char));
     return final_buffer ? final_buffer : buffer;
 }
@@ -214,14 +328,14 @@ int exec_commands(const string *tokens)
     }
     else if (pid == 0)
     {
-         // printf("the child's id process is %d\n", getpid());
-         execvp(tokens[0], tokens);
+        // printf("the child's id process is %d\n", getpid());
+        execvp(tokens[0], tokens);
     }
     else
     {
-         // printf("the parent's process id is %d\n", getpid());
-         wait(NULL);
-         // printf("the child died. parent moving on.\n");
+        // printf("the parent's process id is %d\n", getpid());
+        wait(NULL);
+        // printf("the child died. parent moving on.\n");
     }
     return 0;
 }
@@ -229,34 +343,41 @@ int exec_commands(const string *tokens)
 void change_dir(const string directory_path)
 {
     chdir(directory_path);
-    text_to_print = string_concatenation(text_to_print, directory_path);
     return;
 }
 
 int main(void)
 {
-    extern string text_to_print;
+    signal(SIGINT, handle_signal);
 
     Node *head = NULL;
     current_node = head;
 
+    char cwd[PATH_MAX];
+
     while (1)
     {
-        printf("%s ", text_to_print);
+        if (getcwd(cwd, sizeof(cwd)) != NULL)
+        {
+            printf("\033[1;34m%s\033[0m> ", cwd);
+        }
         string input = read_input();
+
+        if (string_length(input) > 0)
+        {
+            insert_element_at_head(&head, input);
+        }
 
         if (input == NULL || *input == '\0')
             break;
 
-        insert_element_at_head(&head, input);
         string *tokens = tokenize_input(input);
-        //for (int i = 0; tokens[i] != NULL; i++)
+        // for (int i = 0; tokens[i] != NULL; i++)
         //{
-        //    printf("%s\n", tokens[i]);
-        //}
+        //     printf("%s\n", tokens[i]);
+        // }
         exec_commands(tokens);
         free_tokens(tokens);
         free(input);
-        free_linked_list(head);
     }
 }
