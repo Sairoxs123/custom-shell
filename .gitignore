@@ -1,2 +1,3 @@
 compiled/*
 my-secret-key.asc
+*.o

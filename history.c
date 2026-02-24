@@ -10,7 +10,7 @@ int string_length(const string str)
     return len;
 }
 
-void string_copy(char *dest, const char *src)
+void string_copy(string dest, const string src)
 {
     int i = 0;
     while (src[i] != '\0')
@@ -23,24 +23,28 @@ void string_copy(char *dest, const char *src)
 
 extern Node *current_node;
 
-void insert_element_at_head(Node **head, const string command)
+Node* create_node(const string command)
 {
     Node *new_node = malloc(sizeof(Node));
-    int len = string_length(command);
-    new_node->command = malloc(len + 1);
+    new_node->command = malloc(string_length(command) + 1);
     string_copy(new_node->command, command);
+    new_node->next = NULL;
+    new_node->previous = NULL;
+    return new_node;
+}
+
+void insert_element_at_head(Node **head, const string command)
+{
+    Node *new_node = create_node(command);
 
     if (*head == NULL)
     {
-        new_node->next = NULL;
-        new_node->previous = NULL;
         *head = new_node;
         current_node = *head;
         return;
     }
     new_node->next = *head;
     (*head)->previous = new_node;
-    new_node->previous = NULL;
     *head = new_node;
     current_node = *head;
 }

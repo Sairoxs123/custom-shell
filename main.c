@@ -59,7 +59,8 @@ void handle_signal(int sig)
 
 void enableRawMode()
 {
-    if (inRawMode) return;
+    if (inRawMode)
+        return;
 
     tcgetattr(STDIN_FILENO, &orig_termios);
     atexit(disableRawMode);
@@ -200,6 +201,12 @@ string read_input()
     if (buffer == NULL)
         return NULL;
 
+    // save the original buffer state for navigating back from history
+    string saved_buffer = malloc(capacity * sizeof(char));
+    int saved_length = 0;
+    int saved_capacity = capacity;
+    bool restored_saved_buffer = false;
+
     fflush(stdout);
     enableRawMode();
 
@@ -223,20 +230,40 @@ string read_input()
                 case 'A':
                     if (current_node != NULL)
                     {
+                        restored_saved_buffer = false;
+
+                        // save current buffer before navigating to history
+                        saved_length = length;
+                        if (saved_capacity < capacity)
+                        {
+                            saved_buffer = realloc(saved_buffer, capacity * sizeof(char));
+                            saved_capacity = capacity;
+                        }
+                        for (int i = 0; i < length; i++)
+                        {
+                            saved_buffer[i] = buffer[i];
+                        }
+
                         string cmd = current_node->command;
                         int cmd_len = string_length(cmd);
 
-                        // Clear current buffer on screen
+                        // clear current buffer on screen
                         for (int i = 0; i < length; i++)
                         {
                             write(STDOUT_FILENO, "\b \b", 3);
                         }
 
-                        // Copy command to buffer and display
-                        length = 0;
+                        // copy command to buffer and display
+                        length = cmd_len;
+                        if (capacity < cmd_len + 1)
+                        {
+                            capacity = cmd_len + 10;
+                            buffer = realloc(buffer, capacity * sizeof(char));
+                        }
+
                         for (int i = 0; i < cmd_len; i++)
                         {
-                            buffer[length++] = cmd[i];
+                            buffer[i] = cmd[i];
                             write(STDOUT_FILENO, &cmd[i], 1);
                         }
 
@@ -247,30 +274,68 @@ string read_input()
                         else
                         {
                             write(STDOUT_FILENO, "\a", 1);
+                            fflush(stdout);
                         }
                     }
                     continue;
                 case 'B':
-                    //printf("Down Arrow Pressed\r\n");
-                    //printf("%i", current_node == NULL);
-                    // write(STDOUT_FILENO, (current_node == NULL) ? "T" : "F", 1);
-                    if (current_node != NULL && current_node->previous != NULL)
+                    if (current_node != NULL)
                     {
                         string current_cmd = current_node->command;
-                        current_node = current_node->previous;
-                        string cmd = current_node->command;
-                        int cmd_len = string_length(cmd);
-
-                        for (int i = 0; i <= string_length(current_cmd); i++)
+                        if (current_node->previous != NULL)
                         {
-                            write(STDOUT_FILENO, "\b \b", 3);
+                            restored_saved_buffer = false;
+                            current_node = current_node->previous;
+                            string cmd = current_node->command;
+                            int cmd_len = string_length(cmd);
+
+                            for (int i = 0; i <= string_length(current_cmd); i++)
+                            {
+                                write(STDOUT_FILENO, "\b \b", 3);
+                            }
+
+                            length = cmd_len;
+                            if (capacity < cmd_len + 1)
+                            {
+                                capacity = cmd_len + 10;
+                                buffer = realloc(buffer, capacity * sizeof(char));
+                            }
+
+                            for (int i = 0; i < cmd_len; i++)
+                            {
+                                buffer[i] = cmd[i];
+                                write(STDOUT_FILENO, &cmd[i], 1);
+                            }
                         }
-
-                        length = 0;
-                        for (int i = 0; i < cmd_len; i++)
+                        else
                         {
-                            buffer[length++] = cmd[i];
-                            write(STDOUT_FILENO, &cmd[i], 1);
+                            if (restored_saved_buffer)
+                            {
+                                continue;
+                            }
+
+                            // we're at the bottom, restore the original input
+                            int cmd_length = string_length(current_cmd);
+
+                            for (int i = 0; i < cmd_length; i++)
+                            {
+                                write(STDOUT_FILENO, "\b \b", 3);
+                            }
+
+                            length = saved_length;
+                            if (capacity < saved_length + 1)
+                            {
+                                capacity = saved_length + 10;
+                                buffer = realloc(buffer, capacity * sizeof(char));
+                            }
+
+                            for (int i = 0; i < saved_length; i++)
+                            {
+                                buffer[i] = saved_buffer[i];
+                                write(STDOUT_FILENO, &saved_buffer[i], 1);
+                            }
+
+                            restored_saved_buffer = true;
                         }
                     }
 
@@ -280,8 +345,9 @@ string read_input()
             continue;
         }
 
-        if (ch == 127) // Handle Backspace
+        if (ch == 127) // handle Backspace
         {
+            restored_saved_buffer = false;
             if (length > 0)
             {
                 length--;
@@ -302,11 +368,13 @@ string read_input()
             buffer = temp;
         }
         buffer[length++] = ch;
+        restored_saved_buffer = false;
         write(STDOUT_FILENO, &ch, 1);
     }
     write(STDOUT_FILENO, "\n", 1);
     buffer[length] = '\0';
     disableRawMode();
+    free(saved_buffer);
     string final_buffer = realloc(buffer, (length + 1) * sizeof(char));
     return final_buffer ? final_buffer : buffer;
 }
