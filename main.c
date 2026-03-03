@@ -206,6 +206,7 @@ string read_input()
     int saved_length = 0;
     int saved_capacity = capacity;
     bool restored_saved_buffer = false;
+    bool in_history_navigation = false;
 
     fflush(stdout);
     enableRawMode();
@@ -227,73 +228,37 @@ string read_input()
             {
                 switch (seq[1])
                 {
-                case 'A':
-                    if (current_node != NULL)
-                    {
-                        restored_saved_buffer = false;
-
-                        // save current buffer before navigating to history
-                        saved_length = length;
-                        if (saved_capacity < capacity)
-                        {
-                            saved_buffer = realloc(saved_buffer, capacity * sizeof(char));
-                            saved_capacity = capacity;
-                        }
-                        for (int i = 0; i < length; i++)
-                        {
-                            saved_buffer[i] = buffer[i];
-                        }
-
-                        string cmd = current_node->command;
-                        int cmd_len = string_length(cmd);
-
-                        // clear current buffer on screen
-                        for (int i = 0; i < length; i++)
-                        {
-                            write(STDOUT_FILENO, "\b \b", 3);
-                        }
-
-                        // copy command to buffer and display
-                        length = cmd_len;
-                        if (capacity < cmd_len + 1)
-                        {
-                            capacity = cmd_len + 10;
-                            buffer = realloc(buffer, capacity * sizeof(char));
-                        }
-
-                        for (int i = 0; i < cmd_len; i++)
-                        {
-                            buffer[i] = cmd[i];
-                            write(STDOUT_FILENO, &cmd[i], 1);
-                        }
-
-                        if (current_node->next != NULL)
-                        {
-                            current_node = current_node->next;
-                        }
-                        else
-                        {
-                            write(STDOUT_FILENO, "\a", 1);
-                            fflush(stdout);
-                        }
-                    }
-                    continue;
-                case 'B':
-                    if (current_node != NULL)
-                    {
-                        string current_cmd = current_node->command;
-                        if (current_node->previous != NULL)
+                    case 'A':
+                        if (current_node != NULL)
                         {
                             restored_saved_buffer = false;
-                            current_node = current_node->previous;
+
+                            // save current buffer only when entering history navigation
+                            if (!in_history_navigation)
+                            {
+                                saved_length = length;
+                                if (saved_capacity < capacity)
+                                {
+                                    saved_buffer = realloc(saved_buffer, capacity * sizeof(char));
+                                    saved_capacity = capacity;
+                                }
+                                for (int i = 0; i < length; i++)
+                                {
+                                    saved_buffer[i] = buffer[i];
+                                }
+                                in_history_navigation = true;
+                            }
+
                             string cmd = current_node->command;
                             int cmd_len = string_length(cmd);
 
-                            for (int i = 0; i <= string_length(current_cmd); i++)
+                            // clear current buffer on screen
+                            for (int i = 0; i < length; i++)
                             {
                                 write(STDOUT_FILENO, "\b \b", 3);
                             }
 
+                            // copy command to buffer and display
                             length = cmd_len;
                             if (capacity < cmd_len + 1)
                             {
@@ -306,40 +271,82 @@ string read_input()
                                 buffer[i] = cmd[i];
                                 write(STDOUT_FILENO, &cmd[i], 1);
                             }
+
+                            if (current_node->next != NULL)
+                            {
+                                current_node = current_node->next;
+                            }
+                            else
+                            {
+                                write(STDOUT_FILENO, "\a", 1);
+                                fflush(stdout);
+                            }
                         }
-                        else
+                        continue;
+                    case 'B':
+                        if (current_node != NULL)
                         {
-                            if (restored_saved_buffer)
+                            string current_cmd = current_node->command;
+                            if (current_node->previous != NULL)
                             {
-                                continue;
+                                restored_saved_buffer = false;
+                                int current_len = string_length(current_node->command);
+                                current_node = current_node->previous;
+                                string cmd = current_node->command;
+                                int cmd_len = string_length(cmd);
+
+                                for (int i = 0; i < current_len; i++)
+                                {
+                                    write(STDOUT_FILENO, "\b \b", 3);
+                                }
+
+                                length = cmd_len;
+                                if (capacity < cmd_len + 1)
+                                {
+                                    capacity = cmd_len + 10;
+                                    buffer = realloc(buffer, capacity * sizeof(char));
+                                }
+
+                                for (int i = 0; i < cmd_len; i++)
+                                {
+                                    buffer[i] = cmd[i];
+                                    write(STDOUT_FILENO, &cmd[i], 1);
+                                }
                             }
-
-                            // we're at the bottom, restore the original input
-                            int cmd_length = string_length(current_cmd);
-
-                            for (int i = 0; i < cmd_length; i++)
+                            else
                             {
-                                write(STDOUT_FILENO, "\b \b", 3);
-                            }
+                                if (restored_saved_buffer)
+                                {
+                                    continue;
+                                }
 
-                            length = saved_length;
-                            if (capacity < saved_length + 1)
-                            {
-                                capacity = saved_length + 10;
-                                buffer = realloc(buffer, capacity * sizeof(char));
-                            }
+                                // we're at the bottom, restore the original input
+                                int cmd_length = string_length(current_cmd);
 
-                            for (int i = 0; i < saved_length; i++)
-                            {
-                                buffer[i] = saved_buffer[i];
-                                write(STDOUT_FILENO, &saved_buffer[i], 1);
-                            }
+                                for (int i = 0; i < cmd_length; i++)
+                                {
+                                    write(STDOUT_FILENO, "\b \b", 3);
+                                }
 
-                            restored_saved_buffer = true;
+                                length = saved_length;
+                                if (capacity < saved_length + 1)
+                                {
+                                    capacity = saved_length + 10;
+                                    buffer = realloc(buffer, capacity * sizeof(char));
+                                }
+
+                                for (int i = 0; i < saved_length; i++)
+                                {
+                                    buffer[i] = saved_buffer[i];
+                                    write(STDOUT_FILENO, &saved_buffer[i], 1);
+                                }
+
+                                restored_saved_buffer = true;
+                                in_history_navigation = false;
+                            }
                         }
-                    }
 
-                    continue;
+                        continue;
                 }
             }
             continue;
@@ -348,6 +355,7 @@ string read_input()
         if (ch == 127) // handle Backspace
         {
             restored_saved_buffer = false;
+            in_history_navigation = false;
             if (length > 0)
             {
                 length--;
@@ -369,6 +377,7 @@ string read_input()
         }
         buffer[length++] = ch;
         restored_saved_buffer = false;
+        in_history_navigation = false;
         write(STDOUT_FILENO, &ch, 1);
     }
     write(STDOUT_FILENO, "\n", 1);
